@@ -1029,3 +1029,12 @@ textarea.form-input {
   color: #475569;
   cursor: not-allowed;
 }
+
+.app-locked {
+  pointer-events: none;
+  user-select: none;
+}
+
+.app-locked #loading-overlay {
+  pointer-events: all; /* ให้กดไม่ได้แต่เห็น */
+}

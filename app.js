@@ -4,6 +4,9 @@
 const API_BASE =
   "https://script.google.com/macros/s/AKfycbxIBpGNfubiCXppJiF_5nEfZqwzOOofVvwPSMsisQY9b2xNwfkZyMnKBuyaftVzwKbX/exec";
 
+
+let dataReady = false;   // 🔒 ล็อกระบบ
+
 let currentScreen = "home";
 let currentEquipmentId = null;
 let currentResultData = null;
@@ -26,6 +29,27 @@ let inspectionData = {
 /************************************************************
  * HELPERS
  ************************************************************/
+function lockUI() {
+  document.body.classList.add("app-locked");
+
+  document.querySelectorAll(
+    "button, .nav-item, input, textarea, select"
+  ).forEach(el => {
+    el.disabled = true;
+  });
+}
+
+function unlockUI() {
+  document.body.classList.remove("app-locked");
+
+  document.querySelectorAll(
+    "button, .nav-item, input, textarea, select"
+  ).forEach(el => {
+    el.disabled = false;
+  });
+}
+
+
 const $ = (id) => document.getElementById(id);
 
 function setActiveNav(screen) {
@@ -1067,10 +1091,32 @@ function hideLoading() {
  * INIT
  ************************************************************/
 (async function init() {
-  await loadVehicles();
-  await loadInspections();
-  updateDashboard();
-  updatePassFailDashboard();
+  try {
+    lockUI();
+    showLoading("กำลังโหลดข้อมูลจากระบบ…");
 
-  navigateToScreen("home");
+    await Promise.all([
+      loadVehicles(),
+      loadInspections()
+    ]);
+
+    dataReady = true;     // ✅ ปลดล็อก logic
+    unlockUI();
+
+    updateDashboard();
+    updatePassFailDashboard();
+    navigateToScreen("home");
+
+  } catch (err) {
+    console.error(err);
+
+    showErrorModal(
+      "ไม่สามารถโหลดข้อมูลจากระบบได้<br>กรุณารีเฟรชใหม่"
+    );
+
+    dataReady = false;
+    lockUI(); // ❌ ล็อกถาวร
+  } finally {
+    hideLoading();
+  }
 })();
