@@ -377,14 +377,14 @@ body, input, button, textarea {
   border-radius: 12px;
   border: 1px solid rgba(180, 180, 180, 0.9);
   background: var(--gray-200);                /* ORIGINAL: #020617 */
-  color: var(--gray-50);                      /* ORIGINAL: #f9fafb */
+  color: var(--gray-900);                      /* ORIGINAL: #f9fafb */
   font-size: 13px;
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .form-input::placeholder {
-  color: var(--gray-500);                     /* ORIGINAL: #6b7280 */
+  color: var(--gray-900);                     /* ORIGINAL: #6b7280 */
 }
 
 .form-input:focus {
