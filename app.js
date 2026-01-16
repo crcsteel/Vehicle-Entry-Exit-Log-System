@@ -2,7 +2,7 @@
  * GLOBAL STATE
  ************************************************************/
 const API_BASE =
-  "https://script.google.com/macros/s/AKfycbyvbKtQvW7xmt4GU1RILN4o6LsKyPX-4n7rlRjil7TIVxzWbGk3TkJHjDAD94tIJihS/exec";
+  "https://script.google.com/macros/s/AKfycbxIBpGNfubiCXppJiF_5nEfZqwzOOofVvwPSMsisQY9b2xNwfkZyMnKBuyaftVzwKbX/exec";
 
 let currentScreen = "home";
 let currentEquipmentId = null;
@@ -447,11 +447,13 @@ async function submitInspection() {
 
     hideLoading();
 
-// ✅ สำเร็จ
-if (!res.success) {
-  showErrorModal(res.message || "บันทึกไม่สำเร็จ");
-  return;
-}
+    console.log("SUBMIT RESPONSE:", res); // 👈 debug
+
+    if (!res || res.success !== true) {
+      showErrorModal(res?.message || "บันทึกไม่สำเร็จ (backend)");
+      return;
+    }
+
 
 // 🧹 reset state
 editingInspection = null;
@@ -673,25 +675,6 @@ document.querySelectorAll(".nav-item").forEach(btn => {
     navigateToScreen(screen);
   });
 });
-
-
-
-/************************************************************
- * BOTTOM NAV (FIXED)
- ************************************************************/
-document.querySelectorAll(".nav-item").forEach(btn => {
-  btn.addEventListener("click", () => {
-    const screen = btn.dataset.screen;
-
-    if (screen === "history") {
-      historyMode = "all";
-    }
-
-    navigateToScreen(screen);
-  });
-});
-
-
 
 
 function updateDashboard() {
