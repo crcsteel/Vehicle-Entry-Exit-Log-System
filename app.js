@@ -357,6 +357,19 @@ async function startQRScan() {
 /************************************************************
  * START INSPECTION
  ************************************************************/
+function openInspectionWithCarNumber(carNumber) {
+  startInspection();
+
+  const carInput = $("car-number");
+  carInput.value = carNumber;
+
+  // 🔒 ล็อกไม่ให้แก้
+  carInput.readOnly = true;
+  carInput.classList.add("locked");
+
+  updateSubmitButton();
+}
+
 function startInspection() {
   inspectionData = {
     "engine-oil": null,
@@ -365,8 +378,19 @@ function startInspection() {
     light: null
   };
 
-  document.querySelectorAll(".form-input").forEach(i => i.value = "");
-  document.querySelectorAll(".toggle-btn").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".form-input").forEach(i => {
+    i.value = "";
+    i.readOnly = false;
+    i.classList.remove("locked");
+  });
+
+  document.querySelectorAll(".toggle-btn").forEach(b => {
+    b.classList.remove("active", "locked");
+    b.disabled = false;
+  });
+
+  const fileInput = $("car-images");
+  if (fileInput) fileInput.disabled = false;
 
   updateSubmitButton();
   navigateToScreen("inspection");
@@ -620,6 +644,32 @@ function renderHistory() {
       </div>
     `).join("");
 }
+function lockInspectionFormExceptEndKmAndImages() {
+  // 🔒 input text ทั้งหมด
+  document.querySelectorAll(".form-input").forEach(input => {
+    input.readOnly = true;
+    input.classList.add("locked");
+  });
+
+  // 🔓 ยกเว้น km-end
+  const kmEnd = $("km-end");
+  if (kmEnd) {
+    kmEnd.readOnly = false;
+    kmEnd.classList.remove("locked");
+  }
+
+  // 🔒 toggle buttons ทั้งหมด
+  document.querySelectorAll(".toggle-btn").forEach(btn => {
+    btn.disabled = true;
+    btn.classList.add("locked");
+  });
+
+  // 🔓 file input (แนบรูป)
+  const fileInput = $("car-images");
+  if (fileInput) {
+    fileInput.disabled = false;
+  }
+}
 
 /************************************************************
  * BUTTON EVENTS
@@ -656,9 +706,16 @@ $("new-inspection-btn")?.addEventListener("click", () => {
   if (!item) return;
 
   editingInspection = item;
+
+  // เติมข้อมูลเดิม
   fillInspectionForm(item);
+
+  // 🔒 ล็อกทุกอย่าง ยกเว้น km-end + รูป
+  lockInspectionFormExceptEndKmAndImages();
+
   navigateToScreen("inspection");
 });
+
 document.querySelectorAll(".nav-item").forEach(btn => {
   btn.addEventListener("click", () => {
     const screen = btn.dataset.screen;
@@ -1004,6 +1061,7 @@ function hideLoading() {
   const overlay = document.getElementById("loading-overlay");
   if (overlay) overlay.style.display = "none";
 }
+
 
 /************************************************************
  * INIT
