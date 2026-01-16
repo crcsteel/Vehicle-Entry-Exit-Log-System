@@ -1038,3 +1038,25 @@ textarea.form-input {
 .app-locked #loading-overlay {
   pointer-events: all; /* ให้กดไม่ได้แต่เห็น */
 }
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.search-bar i {
+  color: #94a3b8;
+}
+
+.search-bar input {
+  border: none;
+  outline: none;
+  width: 100%;
+  font-size: 14px;
+}

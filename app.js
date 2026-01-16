@@ -6,6 +6,7 @@ const API_BASE =
 
 
 let dataReady = false;   // 🔒 ล็อกระบบ
+let historySearch = "";
 
 let currentScreen = "home";
 let currentEquipmentId = null;
@@ -650,24 +651,42 @@ function fileToBase64(file) {
  ************************************************************/
 function renderHistory() {
   const box = $("history-list");
-  if (!inspections.length) {
+  if (!box) return;
+
+  const list = inspections
+    .filter(i => {
+      // 🔍 search (เลขรถ + ชื่อพนักงานขับรถ)
+      if (historySearch) {
+        const text =
+          `${i.car_number || ""} ${i.driver_name || ""}`.toLowerCase();
+        if (!text.includes(historySearch)) return false;
+      }
+      return true;
+    })
+    // 🔽 เรียงจากล่าสุด → เก่าสุด
+    .sort((a, b) =>
+      new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
+    );
+
+  if (!list.length) {
     box.innerHTML = "<div>ยังไม่มีประวัติ</div>";
     return;
   }
 
-  box.innerHTML = inspections
-    .sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp))
-    .map(i => `
-      <div class="history-item">
-        <div class="history-header">
-          <span class="history-id">${i.car_number}</span>
-          <span>${i.driver_name}</span>
-          <span class="status-badge status-good">บันทึก</span>
-        </div>
-        <div class="history-date-small">${new Date(i.timestamp).toLocaleString()}</div>
+  box.innerHTML = list.map(i => `
+    <div class="history-item" onclick="openVehicleResult('${i.car_number}')">
+      <div class="history-header">
+        <span class="history-id">${i.car_number}</span>
+        <span>${i.driver_name || "-"}</span>
+        <span class="status-badge status-good">บันทึก</span>
       </div>
-    `).join("");
+      <div class="history-date-small">
+        ${new Date(i.timestamp).toLocaleString()}
+      </div>
+    </div>
+  `).join("");
 }
+
 function lockInspectionFormExceptEndKmAndImages() {
   // 🔒 input text ทั้งหมด
   document.querySelectorAll(".form-input").forEach(input => {
@@ -738,6 +757,13 @@ $("new-inspection-btn")?.addEventListener("click", () => {
   lockInspectionFormExceptEndKmAndImages();
 
   navigateToScreen("inspection");
+});
+$("history-search")?.addEventListener("input", e => {
+  historySearch = e.target.value.trim().toLowerCase();
+
+  if (historyMode === "fail") renderFailList();
+  else if (historyMode === "pass") renderPassList();
+  else renderHistory();
 });
 
 document.querySelectorAll(".nav-item").forEach(btn => {
@@ -834,19 +860,34 @@ function renderFailList() {
   const box = $("history-list");
   if (!box) return;
 
-  const failInspections = inspections.filter(i => {
-    const checklist = i.checklist || {
-      "engine-oil": i.engine_oil,
-      coolant: i.coolant,
-      tire: i.tire,
-      light: i.light
-    };
+  const failInspections = inspections
+    .filter(i => {
+      const checklist = i.checklist || {
+        "engine-oil": i.engine_oil,
+        coolant: i.coolant,
+        tire: i.tire,
+        light: i.light
+      };
 
-    if (!isFail(checklist)) return false;
-    if (!isFailByReason(checklist, failReason)) return false;
+      // ❌ ไม่ใช่ fail
+      if (!isFail(checklist)) return false;
 
-    return true;
-  });
+      // ❌ ไม่ตรง reason
+      if (!isFailByReason(checklist, failReason)) return false;
+
+      // 🔍 search (เลขรถ + ชื่อคนขับ)
+      if (historySearch) {
+        const text =
+          `${i.car_number || ""} ${i.driver_name || ""}`.toLowerCase();
+        if (!text.includes(historySearch)) return false;
+      }
+
+      return true;
+    })
+    // 🔽 เรียงล่าสุด → เก่าสุด
+    .sort((a, b) =>
+      new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
+    );
 
   if (!failInspections.length) {
     box.innerHTML = "<div>🎉 ไม่พบรถที่ต้องซ่อมตามเงื่อนไข</div>";
@@ -859,8 +900,12 @@ function renderFailList() {
         <span class="history-id">${i.car_number}</span>
         <span class="status-badge status-bad">ต้องซ่อม</span>
       </div>
-      <div class="history-inspector">พนักงานขับรถ: ${i.driver_name || "-"}</div>
-      <div class="history-date-small">${new Date(i.timestamp).toLocaleString()}</div>
+      <div class="history-inspector">
+        พนักงานขับรถ: ${i.driver_name || "-"}
+      </div>
+      <div class="history-date-small">
+        ${new Date(i.timestamp).toLocaleString()}
+      </div>
     </div>
   `).join("");
 }
@@ -899,15 +944,31 @@ function renderPassList() {
   const box = $("history-list");
   if (!box) return;
 
-  const passInspections = inspections.filter(i => {
-    const checklist = i.checklist || {
-      "engine-oil": i.engine_oil,
-      coolant: i.coolant,
-      tire: i.tire,
-      light: i.light
-    };
-    return !isFail(checklist);
-  });
+  const passInspections = inspections
+    .filter(i => {
+      const checklist = i.checklist || {
+        "engine-oil": i.engine_oil,
+        coolant: i.coolant,
+        tire: i.tire,
+        light: i.light
+      };
+
+      // ❌ เป็น fail → ตัดทิ้ง
+      if (isFail(checklist)) return false;
+
+      // 🔍 search (เลขรถ + ชื่อคนขับ)
+      if (historySearch) {
+        const text =
+          `${i.car_number || ""} ${i.driver_name || ""}`.toLowerCase();
+        if (!text.includes(historySearch)) return false;
+      }
+
+      return true;
+    })
+    // 🔽 เรียงล่าสุด → เก่าสุด
+    .sort((a, b) =>
+      new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
+    );
 
   if (!passInspections.length) {
     box.innerHTML = "<div>🚗 ยังไม่มีรถที่ผ่าน</div>";
@@ -920,8 +981,12 @@ function renderPassList() {
         <span class="history-id">${i.car_number}</span>
         <span class="status-badge status-good">ผ่าน</span>
       </div>
-      <div class="history-inspector">พนักงานขับรถ: ${i.driver_name || "-"}</div>
-      <div class="history-date-small">${new Date(i.timestamp).toLocaleString()}</div>
+      <div class="history-inspector">
+        พนักงานขับรถ: ${i.driver_name || "-"}
+      </div>
+      <div class="history-date-small">
+        ${new Date(i.timestamp).toLocaleString()}
+      </div>
     </div>
   `).join("");
 }
@@ -1084,6 +1149,12 @@ function showLoading(text = "กำลังดำเนินการ...") {
 function hideLoading() {
   const overlay = document.getElementById("loading-overlay");
   if (overlay) overlay.style.display = "none";
+}
+
+function clearHistorySearch() {
+  historySearch = "";
+  const input = $("history-search");
+  if (input) input.value = "";
 }
 
 
