@@ -120,7 +120,7 @@ function renderVehicleList() {
   empty.style.display = "none";
 
   box.innerHTML = vehicles.map(v => `
-    <div class="history-item" onclick="openVehicleWithLoading(this, '${v.id}')">
+    <div class="history-item" >
       <div class="history-header">
         <span class="history-id">${v.id}</span>
         <span>${v.type}</span>
@@ -626,7 +626,7 @@ function renderHistory() {
  ************************************************************/
 $("start-inspection-btn")?.addEventListener("click", startInspection);
 $("submit-inspection-btn")?.addEventListener("click", submitInspection);
-$("cancel-inspection-btn")?.addEventListener("click", () => navigateToScreen("detail"));
+$("cancel-inspection-btn")?.addEventListener("click", () => navigateToScreen("home"));
 $("back-to-home-btn")?.addEventListener("click", () => navigateToScreen("home"));
 $("view-history-btn")?.addEventListener("click", () => {
   historyMode = "all";
