@@ -242,12 +242,71 @@
       <label class="form-label">กิโลเริ่มงาน (ออก)</label>
       <input type="text" class="form-input" id="km-start" placeholder="เลขไมล์ตอนออก">
     </div>
+    <!-- 6.0 แนบรูปภาพ เลขไมล์ออก -->
+    <div class="form-group">
+      <label class="form-label">แนบรูปภาพ (เลขไมล์ออก)</label>
+
+      <div class="file-upload">
+        <input
+          type="file"
+          id="img-start"
+          accept="image/*"
+          multiple
+          hidden
+        >
+
+        <button type="button"
+                class="file-btn"
+                onclick="document.getElementById('img-start').click()">
+          <i class="fa-solid fa-camera"></i>
+          เลือกรูปภาพ
+        </button>
+
+        <div class="file-info" id="info-start">
+          ยังไม่ได้เลือกรูป
+        </div>
+      </div>
+
+      <small class="file-hint">
+        รองรับหลายรูป (เลขไมล์ตอนออก)
+      </small>
+    </div>
 
     <!-- 7. กิโลจบงาน -->
     <div class="form-group">
       <label class="form-label">กิโลจบงาน (เข้า)</label>
       <input type="text" class="form-input" id="km-end" placeholder="เลขไมล์ตอนเข้า">
     </div>
+     <!-- 7.0 แนบรูปภาพ เลขไมล์เข้า -->
+    <div class="form-group">
+      <label class="form-label">แนบรูปภาพ (เลขไมล์เข้า)</label>
+
+      <div class="file-upload">
+        <input
+          type="file"
+          id="img-end"
+          accept="image/*"
+          multiple
+          hidden
+        >
+
+        <button type="button"
+                class="file-btn"
+                onclick="document.getElementById('img-end').click()">
+          <i class="fa-solid fa-camera"></i>
+          เลือกรูปภาพ
+        </button>
+
+        <div class="file-info" id="info-end">
+          ยังไม่ได้เลือกรูป
+        </div>
+      </div>
+
+      <small class="file-hint">
+        รองรับหลายรูป (เลขไมล์ตอนเข้า)
+      </small>
+    </div>
+
 
     <!-- 8. สถานที่ส่งสินค้า -->
     <div class="form-group">
@@ -255,37 +314,37 @@
       <input type="text" class="form-input" id="destination" placeholder="ระบุสถานที่">
     </div>
 
-    <!-- 9. แนบรูปภาพ -->
-    <div class="form-group">
-      <label class="form-label">
-        แนบรูปภาพ (เลขไมล์รถ / สภาพรถผิดปกติ)
-      </label>
+<!-- 9.3 แนบรูปภาพ ความเสียหาย -->
+<div class="form-group">
+  <label class="form-label">แนบรูปภาพ (สภาพรถผิดปกติ)</label>
 
-      <div class="file-upload">
-        <input
-          type="file"
-          id="car-images"
-          accept="image/*"
-          multiple
-          hidden
-        >
+  <div class="file-upload">
+    <input
+      type="file"
+      id="img-pic"
+      accept="image/*"
+      multiple
+      hidden
+    >
 
-        <button type="button" class="file-btn" onclick="document.getElementById('car-images').click()">
-          <i class="fa-solid fa-camera"></i>
-          เลือกรูปภาพ
-        </button>
+    <button type="button"
+            class="file-btn"
+            onclick="document.getElementById('img-pic').click()">
+      <i class="fa-solid fa-camera"></i>
+      เลือกรูปภาพ
+    </button>
 
-        <div class="file-info" id="file-info">
-          ยังไม่ได้เลือกรูป
-        </div>
-      </div>
-
-      <small class="file-hint">
-        รองรับหลายรูป (เข้า-ออก, ความเสียหาย)
-      </small>
+    <div class="file-info" id="info-pic">
+      ยังไม่ได้เลือกรูป
     </div>
+  </div>
 
+  <small class="file-hint">
+    รองรับหลายรูป (ความเสียหาย)
+  </small>
+</div>
 
+    
     <!-- บันทึก -->
     <button id="submit-inspection-btn" class="btn btn-success" disabled>
       บันทึกผลการตรวจเช็ครถ

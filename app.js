@@ -2,7 +2,7 @@
  * GLOBAL STATE
  ************************************************************/
 const API_BASE =
-  "https://script.google.com/macros/s/AKfycbxIBpGNfubiCXppJiF_5nEfZqwzOOofVvwPSMsisQY9b2xNwfkZyMnKBuyaftVzwKbX/exec";
+  "https://script.google.com/macros/s/AKfycbyMYbAH7czC9EMTPMCGcyDzVOWHkHqOkkXD4ApE_TZ9hQsSBhVx0K9LQ2UFChMzVHEM/exec";
 
 
 let dataReady = false;   // 🔒 ล็อกระบบ
@@ -622,20 +622,42 @@ function closeResultModal() {
 }
 
 async function getImagesBase64() {
-  const files = $("car-images").files;
-  const images = [];
+  return {
+    start: await filesToBase64(document.getElementById("img-start")?.files),
+    end:   await filesToBase64(document.getElementById("img-end")?.files),
+    pic:   await filesToBase64(document.getElementById("img-pic")?.files)
+  };
+}
 
-  for (let f of files) {
-    const base64 = await fileToBase64(f);
-    images.push({
+async function filesToBase64(fileList) {
+  if (!fileList || !fileList.length) return [];
+
+  const arr = [];
+  for (let f of fileList) {
+    arr.push({
       name: f.name,
       type: f.type,
-      data: base64
+      data: await fileToBase64(f)
     });
   }
-
-  return images;
+  return arr;
 }
+
+
+async function filesToBase64(fileList) {
+  if (!fileList || !fileList.length) return [];
+
+  const arr = [];
+  for (let f of fileList) {
+    arr.push({
+      name: f.name,
+      type: f.type,
+      data: await fileToBase64(f)
+    });
+  }
+  return arr;
+}
+
 
 function fileToBase64(file) {
   return new Promise(resolve => {
@@ -645,6 +667,25 @@ function fileToBase64(file) {
     reader.readAsDataURL(file);
   });
 }
+
+function bindFileInfo(inputId, infoId) {
+  const input = document.getElementById(inputId);
+  const info  = document.getElementById(infoId);
+
+  if (!input || !info) return;
+
+  input.addEventListener("change", () => {
+    const n = input.files.length;
+    info.textContent =
+      n === 0 ? "ยังไม่ได้เลือกรูป" :
+      n === 1 ? input.files[0].name :
+      `เลือกรูปแล้ว ${n} รูป`;
+  });
+}
+
+bindFileInfo("img-start", "info-start");
+bindFileInfo("img-end", "info-end");
+bindFileInfo("img-pic", "info-pic");
 
 /************************************************************
  * HISTORY
