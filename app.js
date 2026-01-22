@@ -51,6 +51,24 @@ function unlockUI() {
   });
 }
 
+function normalizeCar(v) {
+  return String(v || "").trim().toUpperCase();
+}
+
+function getLatestInspection(carNumber) {
+  const key = normalizeCar(carNumber);
+  if (!key) return null;
+
+  const list = inspections
+    .filter(i => normalizeCar(i.car_number) === key)
+    .sort((a, b) =>
+      new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
+    );
+
+  return list[0] || null;
+}
+
+
 function highlightCloseRequired() {
   const kmEnd = $("km-end");
   const infoEnd = $("info-end");
@@ -196,7 +214,7 @@ function renderVehicleList() {
 function startInspectionFromVehicle(carNumber) {
   if (hasOpenJob(carNumber)) {
     showErrorModal(
-      `รถคันนี้กำลังออกงานอยู่<br>กรุณาปิดงานก่อน`
+      "รถคันนี้มีงานที่ยังไม่ปิดอยู่<br>กรุณาปิดงานก่อนออกงานใหม่"
     );
     return;
   }
@@ -319,8 +337,20 @@ async function openVehicleResult(carNumber) {
   showLoading("กำลังโหลดข้อมูล…");
 
   try {
-    const item = inspections.find(i => i.car_number == carNumber);
-    if (!item) throw new Error("ไม่พบข้อมูลการตรวจสอบ");
+    const list = inspections
+      .filter(i =>
+        String(i.car_number).trim().toUpperCase() ===
+        String(carNumber).trim().toUpperCase()
+      )
+      .sort((a, b) =>
+        new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
+      );
+
+    if (!list.length) {
+      throw new Error(`ไม่พบข้อมูลรถหมายเลข ${carNumber}`);
+    }
+
+    const item = list[0]; // ล่าสุดจริง
 
     const checklist = item.checklist || {
       "engine-oil": item.engine_oil,
@@ -428,7 +458,7 @@ async function startQRScan() {
 function openInspectionWithCarNumber(carNumber) {
   if (hasOpenJob(carNumber)) {
     showErrorModal(
-      `รถคันนี้กำลังออกงานอยู่<br>กรุณาปิดงานก่อน`
+      "รถคันนี้มีงานที่ยังไม่ปิดอยู่<br>กรุณาปิดงานก่อนออกงานใหม่"
     );
     stopQRScan();
     return;
@@ -444,6 +474,7 @@ function openInspectionWithCarNumber(carNumber) {
   setJobMode("open");
   updateSubmitButton();
 }
+
 
 function startInspection() {
   inspectionData = {
@@ -528,7 +559,7 @@ function updateSubmitButton() {
 async function submitInspection() {
   const carNumber = $("car-number").value.trim();
 
-  // 🔒 กันปิดงานซ้ำ (เช็กจาก inspection เดิมจริง ๆ)
+  // 🔒 กันปิดงานซ้ำ
   if (
     jobMode === "close" &&
     editingInspection &&
@@ -541,7 +572,6 @@ async function submitInspection() {
   showLoading("กำลังบันทึกข้อมูล…");
 
   try {
-    // 🔴 payload (ตรง backend)
     const payload = {
       car_number: carNumber,
       emp_id: $("emp-id").value.trim(),
@@ -550,16 +580,13 @@ async function submitInspection() {
       km_start: $("km-start").value.trim(),
       km_end: $("km-end").value.trim(),
       destination: $("destination").value.trim(),
-
       checklist: inspectionData,
       images: await getImagesBase64(),
       timestamp: new Date().toISOString(),
-
-      // ⭐ มี = แก้ไข / ไม่มี = เพิ่มใหม่
       rowIndex: editingInspection?.rowIndex || null
     };
 
-    // 🛑 กัน “ออกงานซ้ำ” (ชั้นสุดท้าย กันทุกกรณี)
+    // 🛑 กันออกงานซ้ำ (ชั้นสุดท้าย)
     if (
       jobMode === "open" &&
       !editingInspection &&
@@ -567,7 +594,7 @@ async function submitInspection() {
     ) {
       hideLoading();
       showErrorModal(
-        "รถคันนี้มีงานที่ยังไม่ปิดอยู่<br>กรุณาปิดงานก่อนออกงานใหม่"
+        "รถคันนี้มีงานที่ยังไม่ปิดอยู่<br>ไม่สามารถออกงานซ้ำได้"
       );
       return;
     }
@@ -583,31 +610,24 @@ async function submitInspection() {
 
     hideLoading();
 
-    console.log("SUBMIT RESPONSE:", res);
-
     if (!res || res.success !== true) {
-      showErrorModal(res?.message || "บันทึกไม่สำเร็จ (backend)");
+      showErrorModal(res?.message || "บันทึกไม่สำเร็จ");
       return;
     }
 
-    // 🧹 reset state
     editingInspection = null;
     resetInspectionForm();
 
-    // 🔄 reload ข้อมูลทั้งหมด
     await loadVehicles();
     await loadInspections();
 
-    // 📊 refresh dashboard
     updateDashboard();
     updatePassFailDashboard();
 
-    // 🖥️ refresh list ถ้าอยู่หน้า all-ext
     if (currentScreen === "all-ext") {
       renderVehicleList();
     }
 
-    // ✅ แสดงผลลัพธ์ล่าสุด
     showResultScreen({
       car_number: payload.car_number,
       driver_name: payload.driver_name,
@@ -1330,18 +1350,19 @@ function isJobClosed(item) {
 
   const hasEndImage =
     item.images?.end?.length > 0 ||
-    item.img_end?.length > 0; // รองรับ field เก่า
+    item.img_end?.length > 0;
 
   return kmEndOK && hasEndImage;
 }
 
 function hasOpenJob(carNumber) {
-  if (!carNumber) return false;
+  const latest = getLatestInspection(carNumber);
 
-  return inspections.some(item => {
-    if (item.car_number !== carNumber) return false;
-    return !isJobClosed(item); // ยังไม่ปิด = open job
-  });
+  // ไม่เคยมี inspection → ออกงานได้
+  if (!latest) return false;
+
+  // ถ้างานล่าสุดยังไม่ปิด → ห้ามออกงาน
+  return !isJobClosed(latest);
 }
 
 function lockInspectionFormFully() {
