@@ -192,20 +192,24 @@ function renderVehicleList() {
     </div>
   `).join("");
 }
+
 function startInspectionFromVehicle(carNumber) {
-  // reset ฟอร์ม
+  if (hasOpenJob(carNumber)) {
+    showErrorModal(
+      `รถคันนี้กำลังออกงานอยู่<br>กรุณาปิดงานก่อน`
+    );
+    return;
+  }
+
   startInspection();
 
-  // ใส่เบอร์รถอัตโนมัติ
   const carInput = $("car-number");
   carInput.value = carNumber;
   carInput.readOnly = true;
   carInput.classList.add("locked");
 
-  // รีเฟรชปุ่ม submit
+  setJobMode("open");
   updateSubmitButton();
-
-  // ไปหน้า inspection
   navigateToScreen("inspection");
 }
 
@@ -368,18 +372,6 @@ function fillInspectionForm(i) {
 /************************************************************
  * Scan
  ************************************************************/
-function openInspectionWithCarNumber(carNumber) {
-  startInspection();
-
-  const carInput = $("car-number");
-  carInput.value = carNumber;
-  carInput.readOnly = true;
-  carInput.classList.add("locked");
-
-  setJobMode("open"); // 🚚 ออกงาน
-}
-
-
 function stopQRScan() {
   if (scanStream) {
     scanStream.getTracks().forEach(t => t.stop());
@@ -434,15 +426,22 @@ async function startQRScan() {
  * START INSPECTION
  ************************************************************/
 function openInspectionWithCarNumber(carNumber) {
+  if (hasOpenJob(carNumber)) {
+    showErrorModal(
+      `รถคันนี้กำลังออกงานอยู่<br>กรุณาปิดงานก่อน`
+    );
+    stopQRScan();
+    return;
+  }
+
   startInspection();
 
   const carInput = $("car-number");
   carInput.value = carNumber;
-
-  // 🔒 ล็อกไม่ให้แก้
   carInput.readOnly = true;
   carInput.classList.add("locked");
 
+  setJobMode("open");
   updateSubmitButton();
 }
 
@@ -520,25 +519,31 @@ function updateSubmitButton() {
   btn.innerHTML =
     jobMode === "close"
       ? `<i class="fa-solid fa-circle-xmark"></i> ปิดงาน`
-      : `<i class="fa-solid fa-truck"></i> บันทึกออกงาน`;
+      : `<i class="fa-solid fa-share-from-square"></i> บันทึกออกงาน`;
 }
 
 /************************************************************
  * SUBMIT (ตรง backend 100%)
  ************************************************************/
 async function submitInspection() {
-  if (jobMode === "close" && editingInspection?.km_end) {
-    showErrorModal("งานนี้ถูกปิดแล้ว ไม่สามารถบันทึกซ้ำได้");
+  const carNumber = $("car-number").value.trim();
+
+  // 🔒 กันปิดงานซ้ำ (เช็กจาก inspection เดิมจริง ๆ)
+  if (
+    jobMode === "close" &&
+    editingInspection &&
+    isJobClosed(editingInspection)
+  ) {
+    showErrorModal("งานนี้ถูกปิดเรียบร้อยแล้ว ไม่สามารถบันทึกซ้ำได้");
     return;
   }
 
   showLoading("กำลังบันทึกข้อมูล…");
 
   try {
-    // (payload + fetch ตามของคุณเดิม)
-
+    // 🔴 payload (ตรง backend)
     const payload = {
-      car_number: $("car-number").value.trim(),
+      car_number: carNumber,
       emp_id: $("emp-id").value.trim(),
       driver_name: $("driver-name").value.trim(),
       ad_name: $("ad-name").value.trim(),
@@ -550,9 +555,22 @@ async function submitInspection() {
       images: await getImagesBase64(),
       timestamp: new Date().toISOString(),
 
-      // ⭐ สำคัญ: ถ้ามี = แก้ไข, ไม่มี = เพิ่มใหม่
+      // ⭐ มี = แก้ไข / ไม่มี = เพิ่มใหม่
       rowIndex: editingInspection?.rowIndex || null
     };
+
+    // 🛑 กัน “ออกงานซ้ำ” (ชั้นสุดท้าย กันทุกกรณี)
+    if (
+      jobMode === "open" &&
+      !editingInspection &&
+      hasOpenJob(payload.car_number)
+    ) {
+      hideLoading();
+      showErrorModal(
+        "รถคันนี้มีงานที่ยังไม่ปิดอยู่<br>กรุณาปิดงานก่อนออกงานใหม่"
+      );
+      return;
+    }
 
     const form = new FormData();
     form.append("action", "submitVehicleInspection");
@@ -565,39 +583,37 @@ async function submitInspection() {
 
     hideLoading();
 
-    console.log("SUBMIT RESPONSE:", res); // 👈 debug
+    console.log("SUBMIT RESPONSE:", res);
 
     if (!res || res.success !== true) {
       showErrorModal(res?.message || "บันทึกไม่สำเร็จ (backend)");
       return;
     }
 
+    // 🧹 reset state
+    editingInspection = null;
+    resetInspectionForm();
 
-// 🧹 reset state
-editingInspection = null;
-resetInspectionForm();
+    // 🔄 reload ข้อมูลทั้งหมด
+    await loadVehicles();
+    await loadInspections();
 
-// 🔄 โหลดข้อมูลใหม่ทั้งหมด (สำคัญมาก)
-await loadVehicles();     // ⬅️ status + lastInspection ใหม่
-await loadInspections();  // ⬅️ inspection ใหม่
+    // 📊 refresh dashboard
+    updateDashboard();
+    updatePassFailDashboard();
 
-// 🔁 refresh dashboard + list
-updateDashboard();
-updatePassFailDashboard();
+    // 🖥️ refresh list ถ้าอยู่หน้า all-ext
+    if (currentScreen === "all-ext") {
+      renderVehicleList();
+    }
 
-// 🖥️ ถ้าอยู่หน้า all-ext ให้ render ใหม่
-if (currentScreen === "all-ext") {
-  renderVehicleList();
-}
-
-// ✅ แสดงผลจากข้อมูลล่าสุด
-showResultScreen({
-  car_number: payload.car_number,
-  driver_name: payload.driver_name,
-  status: isFail(payload.checklist) ? "Need Service" : "Good",
-  timestamp: payload.timestamp
-});
-
+    // ✅ แสดงผลลัพธ์ล่าสุด
+    showResultScreen({
+      car_number: payload.car_number,
+      driver_name: payload.driver_name,
+      status: isFail(payload.checklist) ? "Need Service" : "Good",
+      timestamp: payload.timestamp
+    });
 
   } catch (err) {
     hideLoading();
@@ -783,39 +799,42 @@ function renderHistory() {
 }
 
 function isInspectionFormValid() {
-  const emp   = $("emp-id").value.trim();
-  const drv   = $("driver-name").value.trim();
-  const car   = $("car-number").value.trim();
-  const kmS   = $("km-start").value.trim();
-  const kmE   = $("km-end").value.trim();
-  const dest  = $("destination").value.trim();
+  const emp  = $("emp-id")?.value.trim();
+  const drv  = $("driver-name")?.value.trim();
+  const car  = $("car-number")?.value.trim();
+  const kmS  = $("km-start")?.value.trim();
+  const kmE  = $("km-end")?.value.trim();
+  const dest = $("destination")?.value.trim();
 
-  // checklist ต้องครบ
+  // ✅ checklist ต้องตอบครบ
   const checklistOK =
     Object.values(inspectionData).every(v => v !== null);
 
-  // รูปเลขไมล์ออก ต้องมีเสมอ
+  // 📸 รูปเลขไมล์ออก (ต้องมีทุกโหมด)
   const imgStartOK =
-    document.getElementById("img-start")?.files.length > 0;
+    document.getElementById("img-start")?.files?.length > 0;
 
-  // 🔴 เฉพาะปิดงาน → บังคับ km-end + img-end
-  const closeModeOK =
-    jobMode !== "close" ||
-    (
-      kmE &&
-      document.getElementById("img-end")?.files.length > 0
-    );
+  // 📸 รูปเลขไมล์เข้า (เฉพาะปิดงาน)
+  const imgEndOK =
+    document.getElementById("img-end")?.files?.length > 0;
 
-  return (
+  // 🔴 เงื่อนไขพื้นฐาน (open + close ใช้ร่วมกัน)
+  const baseOK =
     emp &&
     drv &&
     car &&
     kmS &&
     dest &&
     checklistOK &&
-    imgStartOK &&
-    closeModeOK
-  );
+    imgStartOK;
+
+  // 🏁 ถ้าเป็นปิดงาน → ต้องมี km-end + img-end
+  if (jobMode === "close") {
+    return baseOK && kmE && imgEndOK;
+  }
+
+  // 🚚 ออกงาน
+  return baseOK;
 }
 
 
@@ -1302,7 +1321,27 @@ function clearHistorySearch() {
  * JobClosed
  ************************************************************/
 function isJobClosed(item) {
-  return !!item.km_end;
+  if (!item) return false;
+
+  const kmEndOK =
+    item.km_end !== null &&
+    item.km_end !== undefined &&
+    String(item.km_end).trim() !== "";
+
+  const hasEndImage =
+    item.images?.end?.length > 0 ||
+    item.img_end?.length > 0; // รองรับ field เก่า
+
+  return kmEndOK && hasEndImage;
+}
+
+function hasOpenJob(carNumber) {
+  if (!carNumber) return false;
+
+  return inspections.some(item => {
+    if (item.car_number !== carNumber) return false;
+    return !isJobClosed(item); // ยังไม่ปิด = open job
+  });
 }
 
 function lockInspectionFormFully() {
