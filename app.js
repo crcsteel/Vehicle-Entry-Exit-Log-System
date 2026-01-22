@@ -519,7 +519,7 @@ function updateSubmitButton() {
 
   btn.innerHTML =
     jobMode === "close"
-      ? `<i class="fa-solid fa-flag-checkered"></i> ปิดงาน`
+      ? `<i class="fa-solid fa-circle-xmark"></i> ปิดงาน`
       : `<i class="fa-solid fa-truck"></i> บันทึกออกงาน`;
 }
 
@@ -671,7 +671,7 @@ function showErrorModal(text = "บันทึกไม่สำเร็จ") 
   box.className = "modal-box error";
   box.innerHTML = `
     <div class="modal-icon"><i class="fa-solid fa-xmark" style="color: #ff0000;"></i></i></div>
-    <h3 style="color:#dc2626;">เกิดข้อผิดพลาด</h3>
+    <h3 style="color:#dc2626;">ตรวจสอบ</h3>
     <p style="font-size:14px;color:#475569;">
       ${text}
     </p>
