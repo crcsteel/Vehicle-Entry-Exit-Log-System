@@ -1060,3 +1060,62 @@ textarea.form-input {
   width: 100%;
   font-size: 14px;
 }
+
+/* =========================
+   JOB MODE (ออกงาน / ปิดงาน)
+========================= */
+.job-mode {
+  display: flex;
+  gap: 12px;
+  margin: 20px 0 24px;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 14px 0;
+  border-radius: 14px;
+  border: 2px solid #e5e7eb;
+  background: #f8fafc;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  color: #475569;
+}
+
+/* hover */
+.mode-btn:hover {
+  background: #f1f5f9;
+}
+
+/* 🚚 ออกงาน (active) */
+.mode-btn.active[data-mode="open"] {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  border-color: #16a34a;
+  color: #ffffff;
+  box-shadow: 0 6px 18px rgba(34,197,94,0.35);
+}
+
+/* 🏁 ปิดงาน (active) */
+.mode-btn.active[data-mode="close"] {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  border-color: #dc2626;
+  color: #ffffff;
+  box-shadow: 0 6px 18px rgba(239,68,68,0.35);
+}
+
+/* required highlight ตอนปิดงาน */
+.required {
+  border-color: #ef4444 !important;
+  background: #fff1f2 !important;
+}
+
+#submit-inspection-btn i {
+  margin-right: 6px;
+  font-size: 16px;
+  vertical-align: middle;
+}
+
+.job-mode {
+  display: none !important;
+}

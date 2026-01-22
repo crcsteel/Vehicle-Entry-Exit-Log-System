@@ -5,8 +5,9 @@ const API_BASE =
   "https://script.google.com/macros/s/AKfycbyMYbAH7czC9EMTPMCGcyDzVOWHkHqOkkXD4ApE_TZ9hQsSBhVx0K9LQ2UFChMzVHEM/exec";
 
 
-let dataReady = false;   // 🔒 ล็อกระบบ
+let dataReady = false;
 let historySearch = "";
+let jobMode = "open"; // "open" | "close"
 
 let currentScreen = "home";
 let currentEquipmentId = null;
@@ -49,6 +50,35 @@ function unlockUI() {
     el.disabled = false;
   });
 }
+
+function highlightCloseRequired() {
+  const kmEnd = $("km-end");
+  const infoEnd = $("info-end");
+
+  if (jobMode === "close") {
+    kmEnd?.classList.add("required");
+    infoEnd?.classList.add("required");
+  } else {
+    kmEnd?.classList.remove("required");
+    infoEnd?.classList.remove("required");
+  }
+}
+
+function setJobMode(mode) {
+  jobMode = mode; // "open" | "close"
+
+  document.querySelectorAll(".mode-btn").forEach(btn => {
+    btn.classList.toggle(
+      "active",
+      btn.dataset.mode === mode
+    );
+  });
+
+  highlightCloseRequired();
+  applyJobModeLock();   // 👈 เพิ่มบรรทัดนี้
+  updateSubmitButton();
+}
+
 
 
 const $ = (id) => document.getElementById(id);
@@ -145,7 +175,8 @@ function renderVehicleList() {
   empty.style.display = "none";
 
   box.innerHTML = vehicles.map(v => `
-    <div class="history-item" >
+    <div class="history-item"
+         onclick="startInspectionFromVehicle('${v.id}')">
       <div class="history-header">
         <span class="history-id">${v.id}</span>
         <span>${v.type}</span>
@@ -155,10 +186,29 @@ function renderVehicleList() {
         }">${v.status}</span>
       </div>
       <div class="history-inspector">${v.location}</div>
-      <div class="history-date-small">ตรวจล่าสุด: ${v.lastInspection || "-"}</div>
+      <div class="history-date-small">
+        ตรวจล่าสุด: ${v.lastInspection || "-"}
+      </div>
     </div>
   `).join("");
 }
+function startInspectionFromVehicle(carNumber) {
+  // reset ฟอร์ม
+  startInspection();
+
+  // ใส่เบอร์รถอัตโนมัติ
+  const carInput = $("car-number");
+  carInput.value = carNumber;
+  carInput.readOnly = true;
+  carInput.classList.add("locked");
+
+  // รีเฟรชปุ่ม submit
+  updateSubmitButton();
+
+  // ไปหน้า inspection
+  navigateToScreen("inspection");
+}
+
 
 async function openVehicleWithLoading(el, id) {
   el.classList.add("loading");
@@ -319,15 +369,16 @@ function fillInspectionForm(i) {
  * Scan
  ************************************************************/
 function openInspectionWithCarNumber(carNumber) {
-  // reset ฟอร์มก่อน
   startInspection();
 
-  // ใส่ค่า car number
-  $("car-number").value = carNumber;
+  const carInput = $("car-number");
+  carInput.value = carNumber;
+  carInput.readOnly = true;
+  carInput.classList.add("locked");
 
-  // update ปุ่ม submit
-  updateSubmitButton();
+  setJobMode("open"); // 🚚 ออกงาน
 }
+
 
 function stopQRScan() {
   if (scanStream) {
@@ -443,31 +494,49 @@ document.querySelectorAll(".toggle-btn").forEach(btn => {
 /************************************************************
  * INPUT LISTENER
  ************************************************************/
-["emp-id", "driver-name", "car-number"].forEach(id => {
+[
+  "emp-id",
+  "driver-name",
+  "car-number",
+  "km-start",
+  "km-end",
+  "destination"
+].forEach(id => {
   $(id)?.addEventListener("input", updateSubmitButton);
+});
+
+["img-start", "img-end", "img-pic"].forEach(id => {
+  document.getElementById(id)?.addEventListener("change", updateSubmitButton);
 });
 
 /************************************************************
  * VALIDATION
  ************************************************************/
 function updateSubmitButton() {
-  const emp = $("emp-id").value.trim();
-  const driver = $("driver-name").value.trim();
-  const car = $("car-number").value.trim();
+  const btn = $("submit-inspection-btn");
 
-  const checklistOK = Object.values(inspectionData).every(v => v !== null);
+  btn.disabled = !isInspectionFormValid();
 
-  $("submit-inspection-btn").disabled =
-    !(emp && driver && car && checklistOK);
+  btn.innerHTML =
+    jobMode === "close"
+      ? `<i class="fa-solid fa-flag-checkered"></i> ปิดงาน`
+      : `<i class="fa-solid fa-truck"></i> บันทึกออกงาน`;
 }
 
 /************************************************************
  * SUBMIT (ตรง backend 100%)
  ************************************************************/
 async function submitInspection() {
+  if (jobMode === "close" && editingInspection?.km_end) {
+    showErrorModal("งานนี้ถูกปิดแล้ว ไม่สามารถบันทึกซ้ำได้");
+    return;
+  }
+
   showLoading("กำลังบันทึกข้อมูล…");
 
   try {
+    // (payload + fetch ตามของคุณเดิม)
+
     const payload = {
       car_number: $("car-number").value.trim(),
       emp_id: $("emp-id").value.trim(),
@@ -644,21 +713,6 @@ async function filesToBase64(fileList) {
 }
 
 
-async function filesToBase64(fileList) {
-  if (!fileList || !fileList.length) return [];
-
-  const arr = [];
-  for (let f of fileList) {
-    arr.push({
-      name: f.name,
-      type: f.type,
-      data: await fileToBase64(f)
-    });
-  }
-  return arr;
-}
-
-
 function fileToBase64(file) {
   return new Promise(resolve => {
     const reader = new FileReader();
@@ -728,6 +782,43 @@ function renderHistory() {
   `).join("");
 }
 
+function isInspectionFormValid() {
+  const emp   = $("emp-id").value.trim();
+  const drv   = $("driver-name").value.trim();
+  const car   = $("car-number").value.trim();
+  const kmS   = $("km-start").value.trim();
+  const kmE   = $("km-end").value.trim();
+  const dest  = $("destination").value.trim();
+
+  // checklist ต้องครบ
+  const checklistOK =
+    Object.values(inspectionData).every(v => v !== null);
+
+  // รูปเลขไมล์ออก ต้องมีเสมอ
+  const imgStartOK =
+    document.getElementById("img-start")?.files.length > 0;
+
+  // 🔴 เฉพาะปิดงาน → บังคับ km-end + img-end
+  const closeModeOK =
+    jobMode !== "close" ||
+    (
+      kmE &&
+      document.getElementById("img-end")?.files.length > 0
+    );
+
+  return (
+    emp &&
+    drv &&
+    car &&
+    kmS &&
+    dest &&
+    checklistOK &&
+    imgStartOK &&
+    closeModeOK
+  );
+}
+
+
 function lockInspectionFormExceptEndKmAndImages() {
   // 🔒 input text ทั้งหมด
   document.querySelectorAll(".form-input").forEach(input => {
@@ -735,24 +826,24 @@ function lockInspectionFormExceptEndKmAndImages() {
     input.classList.add("locked");
   });
 
-  // 🔓 ยกเว้น km-end
+  // 🔓 km-end
   const kmEnd = $("km-end");
   if (kmEnd) {
     kmEnd.readOnly = false;
     kmEnd.classList.remove("locked");
   }
 
-  // 🔒 toggle buttons ทั้งหมด
+  // 🔒 checklist
   document.querySelectorAll(".toggle-btn").forEach(btn => {
     btn.disabled = true;
     btn.classList.add("locked");
   });
 
-  // 🔓 file input (แนบรูป)
-  const fileInput = $("car-images");
-  if (fileInput) {
-    fileInput.disabled = false;
-  }
+  // 🔓 อนุญาตแนบรูป "เข้า" + "ความเสียหาย"
+  ["img-end", "img-pic"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = false;
+  });
 }
 
 /************************************************************
@@ -781,6 +872,7 @@ $("card-pass")?.addEventListener("click", () => {
   historyMode = "pass";
   navigateToScreen("history");
 });
+
 $("new-inspection-btn")?.addEventListener("click", () => {
   if (!currentResultData) return;
 
@@ -789,16 +881,24 @@ $("new-inspection-btn")?.addEventListener("click", () => {
   );
   if (!item) return;
 
-  editingInspection = item;
+  // ❌ ถ้าปิดงานแล้ว → ห้ามแก้
+  if (isJobClosed(item)) {
+    showErrorModal("งานนี้ถูกปิดเรียบร้อยแล้ว ไม่สามารถแก้ไขได้");
+    return;
+  }
 
-  // เติมข้อมูลเดิม
+  // ✅ ยังไม่ปิด → อนุญาตปิดงาน
+  editingInspection = item;
   fillInspectionForm(item);
 
-  // 🔒 ล็อกทุกอย่าง ยกเว้น km-end + รูป
+  setJobMode("close");
   lockInspectionFormExceptEndKmAndImages();
 
   navigateToScreen("inspection");
 });
+
+
+
 $("history-search")?.addEventListener("input", e => {
   historySearch = e.target.value.trim().toLowerCase();
 
@@ -1198,6 +1298,72 @@ function clearHistorySearch() {
   if (input) input.value = "";
 }
 
+/************************************************************
+ * JobClosed
+ ************************************************************/
+function isJobClosed(item) {
+  return !!item.km_end;
+}
+
+function lockInspectionFormFully() {
+  document.querySelectorAll("input, textarea, button").forEach(el => {
+    el.disabled = true;
+  });
+
+  // ปุ่มยกเลิกยังกลับได้
+  $("cancel-inspection-btn")?.removeAttribute("disabled");
+}
+
+function applyJobModeLock() {
+  const kmEnd  = $("km-end");
+  const imgEnd = document.getElementById("img-end");
+
+  if (jobMode === "open") {
+    // 🚚 ออกงาน → ล็อก
+    if (kmEnd) {
+      kmEnd.value = "";
+      kmEnd.readOnly = true;
+      kmEnd.classList.add("locked");
+    }
+    if (imgEnd) {
+      imgEnd.value = "";
+      imgEnd.disabled = true;
+    }
+  } else {
+    // 🏁 ปิดงาน → ปลดล็อก
+    if (kmEnd) {
+      kmEnd.readOnly = false;
+      kmEnd.classList.remove("locked");
+    }
+    if (imgEnd) {
+      imgEnd.disabled = false;
+    }
+  }
+}
+
+/************************************************************
+ * ProfileDate
+ ************************************************************/
+function updateProfileDate() {
+  const el = document.getElementById("profile-date");
+  if (!el) return;
+
+  if (!inspections || inspections.length === 0) {
+    el.textContent = "-";
+    return;
+  }
+
+  // หา inspection ล่าสุด
+  const latest = inspections
+    .filter(i => i.timestamp)
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+
+  el.textContent = new Date(latest.timestamp).toLocaleDateString("th-TH", {
+    year: "numeric",
+    month: "long",
+    day: "numeric"
+  });
+}
 
 /************************************************************
  * INIT
@@ -1214,7 +1380,7 @@ function clearHistorySearch() {
 
     dataReady = true;     // ✅ ปลดล็อก logic
     unlockUI();
-
+    updateProfileDate();
     updateDashboard();
     updatePassFailDashboard();
     navigateToScreen("home");
