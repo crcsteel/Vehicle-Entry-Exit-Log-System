@@ -401,6 +401,7 @@ textarea.form-input {
   padding: 14px 16px;
   border-radius: 999px;
   border: none;
+  text-align: center;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -1118,4 +1119,11 @@ textarea.form-input {
 
 .job-mode {
   display: none !important;
+}
+
+#new-inspection-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }

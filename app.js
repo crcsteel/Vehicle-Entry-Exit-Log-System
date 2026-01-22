@@ -2,7 +2,7 @@
  * GLOBAL STATE
  ************************************************************/
 const API_BASE =
-  "https://script.google.com/macros/s/AKfycbyMYbAH7czC9EMTPMCGcyDzVOWHkHqOkkXD4ApE_TZ9hQsSBhVx0K9LQ2UFChMzVHEM/exec";
+  "https://script.google.com/macros/s/AKfycbwclJSDnRQ0rNpAr-cQxbUj6IPi0yPh3EU-MtRcFr6ys9vmIeBYbiZplfhMzTEYCf4X/exec";
 
 
 let dataReady = false;
@@ -31,11 +31,12 @@ let inspectionData = {
 /************************************************************
  * HELPERS
  ************************************************************/
+
 function lockUI() {
   document.body.classList.add("app-locked");
 
   document.querySelectorAll(
-    "button, .nav-item, input, textarea, select"
+    "button:not(.modal-btn), .nav-item, input, textarea, select"
   ).forEach(el => {
     el.disabled = true;
   });
@@ -56,17 +57,19 @@ function normalizeCar(v) {
 }
 
 function getLatestInspection(carNumber) {
-  const key = normalizeCar(carNumber);
-  if (!key) return null;
+  const key = String(carNumber).trim().toUpperCase();
 
   const list = inspections
-    .filter(i => normalizeCar(i.car_number) === key)
+    .filter(i =>
+      String(i.car_number).trim().toUpperCase() === key
+    )
     .sort((a, b) =>
       new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
     );
 
   return list[0] || null;
 }
+
 
 
 function highlightCloseRequired() {
@@ -113,7 +116,10 @@ function setActiveNav(screen) {
 
 function isFail(checklist) {
   if (!checklist) return false;
-  return Object.values(checklist).some(v => v !== "normal");
+
+  return Object.values(checklist).some(
+    v => v && v !== "normal"
+  );
 }
 
 
@@ -251,28 +257,33 @@ async function openVehicleWithLoading(el, id) {
 function showResultScreen(data) {
   currentResultData = data;
 
-  const pass = data.status === "Good";
-
+  // 🔹 SET RESULT DATA (⭐ สำคัญที่สุด)
   $("result-equipment-id").textContent = data.car_number || "-";
-  $("result-inspector").textContent = data.driver_name || "-";
-  $("result-timestamp").textContent =
-    new Date(data.timestamp || Date.now()).toLocaleString();
-
-  $("result-title").textContent =
-    pass ? "บันทึกผลสำเร็จ" : "พบข้อบกพร่อง";
-
-  $("result-subtitle").textContent =
-    pass
-      ? "รถผ่านการตรวจสอบความปลอดภัย"
-      : "รถต้องเข้ารับการซ่อม";
+  $("result-inspector").textContent   = data.driver_name || "-";
+  $("result-timestamp").textContent   =
+    data.timestamp
+      ? new Date(data.timestamp).toLocaleString()
+      : "-";
 
   $("result-status").textContent =
-    pass ? "ผ่าน" : "ต้องซ่อม";
+    data.status === "Good" ? "ผ่าน" : "ต้องซ่อม";
 
-  $("result-icon").textContent = pass ? "✓" : "!";
-  $("result-icon").className =
-    `result-icon ${pass ? "result-pass" : "result-fail"}`;
+  // 🔹 ปุ่มดำเนินการต่อ
+  const btn = $("new-inspection-btn");
+  if (btn) btn.style.display = "none";
 
+  const latest = getLatestInspection(data.car_number);
+
+  if (
+    latest &&
+    data.rowIndex !== undefined &&
+    data.rowIndex === latest.rowIndex &&
+    !isJobClosed(latest)
+  ) {
+    btn.style.display = "inline-flex";
+  }
+
+  // ✅ แสดงหน้าผลลัพธ์
   navigateToScreen("result");
 }
 
@@ -333,24 +344,33 @@ function showInspectionResult({
   navigateToScreen("result");
 }
 
-async function openVehicleResult(carNumber) {
+async function openVehicleResult(carNumber, rowIndex = null) {
   showLoading("กำลังโหลดข้อมูล…");
 
   try {
-    const list = inspections
-      .filter(i =>
-        String(i.car_number).trim().toUpperCase() ===
-        String(carNumber).trim().toUpperCase()
-      )
-      .sort((a, b) =>
-        new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
-      );
+    let item;
 
-    if (!list.length) {
-      throw new Error(`ไม่พบข้อมูลรถหมายเลข ${carNumber}`);
+    if (rowIndex) {
+      // 👉 เปิดตามแถวที่คลิกจริง
+      item = inspections.find(i => i.rowIndex === rowIndex);
     }
 
-    const item = list[0]; // ล่าสุดจริง
+    // fallback (กรณีเปิดจากที่อื่น)
+    if (!item) {
+      const list = inspections
+        .filter(i =>
+          normalizeCar(i.car_number) === normalizeCar(carNumber)
+        )
+        .sort((a, b) =>
+          new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
+        );
+
+      if (!list.length) {
+        throw new Error(`ไม่พบข้อมูลรถหมายเลข ${carNumber}`);
+      }
+
+      item = list[0]; // ล่าสุด
+    }
 
     const checklist = item.checklist || {
       "engine-oil": item.engine_oil,
@@ -363,7 +383,8 @@ async function openVehicleResult(carNumber) {
       car_number: item.car_number,
       driver_name: item.driver_name,
       status: isFail(checklist) ? "Need Service" : "Good",
-      timestamp: item.timestamp
+      timestamp: item.timestamp,
+      rowIndex: item.rowIndex   // ⭐ หัวใจ
     });
 
   } catch (e) {
@@ -560,14 +581,14 @@ async function submitInspection() {
   const carNumber = $("car-number").value.trim();
 
   // 🔒 กันปิดงานซ้ำ
-  if (
-    jobMode === "close" &&
-    editingInspection &&
-    isJobClosed(editingInspection)
-  ) {
+if (jobMode === "close") {
+  const latest = getLatestInspection(carNumber);
+  if (latest && isJobClosed(latest)) {
     showErrorModal("งานนี้ถูกปิดเรียบร้อยแล้ว ไม่สามารถบันทึกซ้ำได้");
     return;
   }
+}
+
 
   showLoading("กำลังบันทึกข้อมูล…");
 
@@ -618,22 +639,26 @@ async function submitInspection() {
     editingInspection = null;
     resetInspectionForm();
 
-    await loadVehicles();
-    await loadInspections();
+await loadVehicles();
+await loadInspections();
 
-    updateDashboard();
-    updatePassFailDashboard();
+const latest = getLatestInspection(payload.car_number);
 
-    if (currentScreen === "all-ext") {
-      renderVehicleList();
-    }
+updateDashboard();
+updatePassFailDashboard();
 
-    showResultScreen({
-      car_number: payload.car_number,
-      driver_name: payload.driver_name,
-      status: isFail(payload.checklist) ? "Need Service" : "Good",
-      timestamp: payload.timestamp
-    });
+if (currentScreen === "all-ext") {
+  renderVehicleList();
+}
+
+showResultScreen({
+  car_number: payload.car_number,
+  driver_name: payload.driver_name,
+  status: isFail(payload.checklist) ? "Need Service" : "Good",
+  timestamp: payload.timestamp,
+  rowIndex: latest?.rowIndex   // ⭐ สำคัญมาก
+});
+
 
   } catch (err) {
     hideLoading();
@@ -800,12 +825,18 @@ function renderHistory() {
     );
 
   if (!list.length) {
-    box.innerHTML = "<div>ยังไม่มีประวัติ</div>";
+    box.innerHTML = "<div>ยังไม่มีประวัติ</div>";  
     return;
   }
 
-  box.innerHTML = list.map(i => `
-    <div class="history-item" onclick="openVehicleResult('${i.car_number}')">
+box.innerHTML = list.map(i => {
+  const row = (i.rowIndex !== undefined && i.rowIndex !== null)
+    ? i.rowIndex
+    : "null";
+
+  return `
+    <div class="history-item"
+         onclick="openVehicleResult('${i.car_number}', ${row})">
       <div class="history-header">
         <span class="history-id">${i.car_number}</span>
         <span>${i.driver_name || "-"}</span>
@@ -815,7 +846,9 @@ function renderHistory() {
         ${new Date(i.timestamp).toLocaleString()}
       </div>
     </div>
-  `).join("");
+  `;
+}).join("");
+
 }
 
 function isInspectionFormValid() {
@@ -830,31 +863,40 @@ function isInspectionFormValid() {
   const checklistOK =
     Object.values(inspectionData).every(v => v !== null);
 
-  // 📸 รูปเลขไมล์ออก (ต้องมีทุกโหมด)
-  const imgStartOK =
+  // 📸 รูปเลขไมล์ออก
+  const hasNewStartImage =
     document.getElementById("img-start")?.files?.length > 0;
 
-  // 📸 รูปเลขไมล์เข้า (เฉพาะปิดงาน)
-  const imgEndOK =
+  // 📸 รูปเลขไมล์เข้า (ปิดงาน)
+  const hasEndImage =
     document.getElementById("img-end")?.files?.length > 0;
 
-  // 🔴 เงื่อนไขพื้นฐาน (open + close ใช้ร่วมกัน)
+  // ✅ มีรูป start เดิมอยู่แล้ว (ตอนแก้ไข)
+  const hasOldStartImage =
+    editingInspection &&
+    editingInspection.images?.start?.length > 0;
+
+  // 🔴 เงื่อนไขพื้นฐาน
   const baseOK =
     emp &&
     drv &&
     car &&
     kmS &&
     dest &&
-    checklistOK &&
-    imgStartOK;
+    checklistOK;
 
-  // 🏁 ถ้าเป็นปิดงาน → ต้องมี km-end + img-end
-  if (jobMode === "close") {
-    return baseOK && kmE && imgEndOK;
+  // 🚚 ออกงาน → ต้องมีรูป start ใหม่
+  if (jobMode === "open") {
+    return baseOK && hasNewStartImage;
   }
 
-  // 🚚 ออกงาน
-  return baseOK;
+  // 🏁 ปิดงาน → ใช้รูปเดิมได้
+  return (
+    baseOK &&
+    kmE &&
+    hasEndImage &&
+    (hasNewStartImage || hasOldStartImage)
+  );
 }
 
 
@@ -915,27 +957,40 @@ $("card-pass")?.addEventListener("click", () => {
 $("new-inspection-btn")?.addEventListener("click", () => {
   if (!currentResultData) return;
 
-  const item = inspections.find(
-    i => i.car_number === currentResultData.car_number
-  );
-  if (!item) return;
+  const carNumber = currentResultData.car_number;
+  const latest = getLatestInspection(carNumber);
 
-  // ❌ ถ้าปิดงานแล้ว → ห้ามแก้
-  if (isJobClosed(item)) {
+  if (!latest) {
+    showErrorModal("ไม่พบข้อมูลงานของรถคันนี้");
+    return;
+  }
+
+  // 🔒 1) อนุญาตแก้ได้เฉพาะแถวล่าสุดเท่านั้น
+  // (ถ้า result ที่ดูอยู่ ไม่ใช่แถวล่าสุด)
+  if (
+    currentResultData.rowIndex &&
+    currentResultData.rowIndex !== latest.rowIndex
+  ) {
+    showErrorModal(
+      "ไม่สามารถแก้ไขงานเก่าได้<br>กรุณาแก้ไขเฉพาะงานล่าสุด"
+    );
+    return;
+  }
+
+  // 🔒 2) ถ้างานล่าสุดปิดแล้ว → ห้ามแก้
+  if (isJobClosed(latest)) {
     showErrorModal("งานนี้ถูกปิดเรียบร้อยแล้ว ไม่สามารถแก้ไขได้");
     return;
   }
 
-  // ✅ ยังไม่ปิด → อนุญาตปิดงาน
-  editingInspection = item;
-  fillInspectionForm(item);
+  // ✅ แก้ได้ (เฉพาะงานล่าสุดที่ยังไม่ปิด)
+  editingInspection = latest;
+  fillInspectionForm(latest);
 
   setJobMode("close");
   lockInspectionFormExceptEndKmAndImages();
-
   navigateToScreen("inspection");
 });
-
 
 
 $("history-search")?.addEventListener("input", e => {
@@ -1042,53 +1097,54 @@ function renderFailList() {
 
   const failInspections = inspections
     .filter(i => {
-      const checklist = i.checklist || {
+      const checklist = {
         "engine-oil": i.engine_oil,
         coolant: i.coolant,
         tire: i.tire,
         light: i.light
       };
 
-      // ❌ ไม่ใช่ fail
       if (!isFail(checklist)) return false;
-
-      // ❌ ไม่ตรง reason
       if (!isFailByReason(checklist, failReason)) return false;
 
-      // 🔍 search (เลขรถ + ชื่อคนขับ)
       if (historySearch) {
-        const text =
-          `${i.car_number || ""} ${i.driver_name || ""}`.toLowerCase();
+        const text = `${i.car_number} ${i.driver_name || ""}`.toLowerCase();
         if (!text.includes(historySearch)) return false;
       }
 
       return true;
     })
-    // 🔽 เรียงล่าสุด → เก่าสุด
-    .sort((a, b) =>
-      new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
-    );
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
   if (!failInspections.length) {
-    box.innerHTML = "<div>🎉 ไม่พบรถที่ต้องซ่อมตามเงื่อนไข</div>";
+    box.innerHTML = "<div>🎉 ไม่พบรถที่ต้องซ่อม</div>";
     return;
   }
 
-  box.innerHTML = failInspections.map(i => `
-    <div class="history-item" onclick="openVehicleResult('${i.car_number}')">
-      <div class="history-header">
-        <span class="history-id">${i.car_number}</span>
-        <span class="status-badge status-bad">ต้องซ่อม</span>
+  box.innerHTML = failInspections.map(i => {
+    const row =
+      i.rowIndex !== undefined && i.rowIndex !== null
+        ? i.rowIndex
+        : "null";
+
+    return `
+      <div class="history-item"
+           onclick="openVehicleResult('${i.car_number}', ${row})">
+        <div class="history-header">
+          <span class="history-id">${i.car_number}</span>
+          <span class="status-badge status-bad">ต้องซ่อม</span>
+        </div>
+        <div class="history-inspector">
+          พนักงานขับรถ: ${i.driver_name || "-"}
+        </div>
+        <div class="history-date-small">
+          ${new Date(i.timestamp).toLocaleString()}
+        </div>
       </div>
-      <div class="history-inspector">
-        พนักงานขับรถ: ${i.driver_name || "-"}
-      </div>
-      <div class="history-date-small">
-        ${new Date(i.timestamp).toLocaleString()}
-      </div>
-    </div>
-  `).join("");
+    `;
+  }).join("");
 }
+
 
 function updateRepeatFailDashboard(days = 30) {
   const el = $("sum-repeat-fail");
@@ -1126,49 +1182,51 @@ function renderPassList() {
 
   const passInspections = inspections
     .filter(i => {
-      const checklist = i.checklist || {
+      const checklist = {
         "engine-oil": i.engine_oil,
         coolant: i.coolant,
         tire: i.tire,
         light: i.light
       };
 
-      // ❌ เป็น fail → ตัดทิ้ง
       if (isFail(checklist)) return false;
 
-      // 🔍 search (เลขรถ + ชื่อคนขับ)
       if (historySearch) {
-        const text =
-          `${i.car_number || ""} ${i.driver_name || ""}`.toLowerCase();
+        const text = `${i.car_number} ${i.driver_name || ""}`.toLowerCase();
         if (!text.includes(historySearch)) return false;
       }
 
       return true;
     })
-    // 🔽 เรียงล่าสุด → เก่าสุด
-    .sort((a, b) =>
-      new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
-    );
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
   if (!passInspections.length) {
     box.innerHTML = "<div>🚗 ยังไม่มีรถที่ผ่าน</div>";
     return;
   }
 
-  box.innerHTML = passInspections.map(i => `
-    <div class="history-item" onclick="openVehicleResult('${i.car_number}')">
-      <div class="history-header">
-        <span class="history-id">${i.car_number}</span>
-        <span class="status-badge status-good">ผ่าน</span>
+  box.innerHTML = passInspections.map(i => {
+    const row =
+      i.rowIndex !== undefined && i.rowIndex !== null
+        ? i.rowIndex
+        : "null";
+
+    return `
+      <div class="history-item"
+           onclick="openVehicleResult('${i.car_number}', ${row})">
+        <div class="history-header">
+          <span class="history-id">${i.car_number}</span>
+          <span class="status-badge status-good">ผ่าน</span>
+        </div>
+        <div class="history-inspector">
+          พนักงานขับรถ: ${i.driver_name || "-"}
+        </div>
+        <div class="history-date-small">
+          ${new Date(i.timestamp).toLocaleString()}
+        </div>
       </div>
-      <div class="history-inspector">
-        พนักงานขับรถ: ${i.driver_name || "-"}
-      </div>
-      <div class="history-date-small">
-        ${new Date(i.timestamp).toLocaleString()}
-      </div>
-    </div>
-  `).join("");
+    `;
+  }).join("");
 }
 
 
@@ -1340,6 +1398,12 @@ function clearHistorySearch() {
 /************************************************************
  * JobClosed
  ************************************************************/
+function isLatestJobClosed(carNumber) {
+  const latest = getLatestInspection(carNumber);
+  if (!latest) return false;
+  return isJobClosed(latest);
+}
+
 function isJobClosed(item) {
   if (!item) return false;
 
@@ -1375,28 +1439,40 @@ function lockInspectionFormFully() {
 }
 
 function applyJobModeLock() {
-  const kmEnd  = $("km-end");
-  const imgEnd = document.getElementById("img-end");
+  const kmEnd     = $("km-end");
+  const imgEnd    = document.getElementById("img-end");
+  const imgStart  = document.getElementById("img-start");
 
   if (jobMode === "open") {
-    // 🚚 ออกงาน → ล็อก
+    // 🚚 ออกงาน
     if (kmEnd) {
       kmEnd.value = "";
       kmEnd.readOnly = true;
       kmEnd.classList.add("locked");
     }
+
     if (imgEnd) {
       imgEnd.value = "";
       imgEnd.disabled = true;
     }
+
+    if (imgStart) {
+      imgStart.disabled = false;
+    }
+
   } else {
-    // 🏁 ปิดงาน → ปลดล็อก
+    // 🏁 ปิดงาน
     if (kmEnd) {
       kmEnd.readOnly = false;
       kmEnd.classList.remove("locked");
     }
+
     if (imgEnd) {
       imgEnd.disabled = false;
+    }
+
+    if (imgStart) {
+      imgStart.disabled = true;
     }
   }
 }
@@ -1423,6 +1499,10 @@ function updateProfileDate() {
     month: "long",
     day: "numeric"
   });
+}
+
+function normalizeCar(v) {
+  return String(v || "").trim().toUpperCase();
 }
 
 /************************************************************
